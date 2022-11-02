@@ -1,0 +1,157 @@
+name: Build TrashCat
+
+on: [push]
+
+jobs:
+  build-all-assets-bundles:
+    name: Build Assets Bundles for ${{ matrix.name }}
+    runs-on: [ubuntu-latest]
+    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      matrix:
+        name:
+          - BuildAssetBundlesmacOS
+          - BuildAssetBundlesAndroid
+          - BuildAssetBundlesiOS
+        include:
+          - name: BuildAssetBundlesmacOS
+            targetPlatform: StandaloneOSX
+            buildMethod: AssetBundles.AssetBundlesMenuItems.BuildAssetBundles
+
+          - name: BuildAssetBundlesAndroid
+            targetPlatform: Android
+            buildMethod: AssetBundles.AssetBundlesMenuItems.BuildAssetBundles
+
+          - name: BuildAssetBundlesiOS
+            targetPlatform: iOS
+            buildMethod: AssetBundles.AssetBundlesMenuItems.BuildAssetBundles
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2.5.0
+
+      - name: Add AltTester Unity SDK
+        run: git submodule update --init --force
+
+      - uses: actions/cache@v3.0.11
+        with:
+          path: TrashCat/Library
+          key: Library-${{ matrix.name }}
+          restore-keys: Library-${{ matrix.name }}
+
+      - uses: game-ci/unity-builder@v2
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          projectPath: TrashCat/
+          targetPlatform: ${{ matrix.targetPlatform }}
+          buildMethod: ${{ matrix.buildMethod }}
+
+      - uses: actions/upload-artifact@v3.1.0
+        with:
+          name: ${{ matrix.name }}
+          path: TrashCat/AssetBundles
+
+  build-for-all-supported-platforms:
+    name: Build Trashcat for ${{ matrix.name }}
+    needs: [build-all-assets-bundles]
+    timeout-minutes: 120
+
+    strategy:
+      fail-fast: false
+      matrix:
+        name:
+          - macOSWithAltTester
+          - WindowsWithAltTester
+          - iOSWithAltTester
+          - AndroidWithAltTester
+          - macOSWithAltTesterIL2CPP
+          - WindowsWithAltTesterIL2CPP
+        include:
+          - name: macOSWithAltTester
+            targetPlatform: StandaloneOSX
+            buildMethod: BuildTrashCat.macOSBuildWithAltTester
+            assetsBundlesName: BuildAssetBundlesmacOS
+            allowDirtyBuild: true
+            runsOn: macos-latest
+
+          - name: WindowsWithAltTester
+            targetPlatform: StandaloneWindows
+            buildMethod: BuildTrashCat.WindowsBuildWithAltTester
+            allowDirtyBuild: false
+            runsOn: windows-2019
+
+          - name: iOSWithAltTester
+            targetPlatform: iOS
+            buildMethod: BuildTrashCat.iOSBuildWithAltTester
+            assetsBundlesName: BuildAssetBundlesiOS
+            allowDirtyBuild: true
+            proxyHost: false
+            runsOn: ubuntu-latest
+
+          - name: AndroidWithAltTester
+            targetPlatform: Android
+            buildMethod: BuildTrashCat.AndroidBuildWithAltTester
+            assetsBundlesName: BuildAssetBundlesAndroid
+            allowDirtyBuild: true
+            proxyHost: false
+            runsOn: ubuntu-latest
+
+          - name: macOSWithAltTesterIL2CPP
+            targetPlatform: StandaloneOSX
+            buildMethod: BuildTrashCat.macOSBuildWithAltTesterIL2CPP
+            assetsBundlesName: BuildAssetBundlesmacOS
+            allowDirtyBuild: true
+            runsOn: macos-latest
+
+          - name: WindowsWithAltTesterIL2CPP
+            targetPlatform: StandaloneWindows
+            buildMethod: BuildTrashCat.WindowsBuildWithAltTesterIL2CPP
+            allowDirtyBuild: false
+            runsOn: windows-2019
+
+    runs-on: ${{ matrix.runsOn }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2.5.0
+
+      - name: Add AltTester Unity SDK
+        run: git submodule update --init --force
+
+      - name: Add Assets Bundles
+        uses: actions/download-artifact@v3.0.1
+        if: ${{ matrix.assetsBundlesName != '' }}
+        with:
+          name: ${{ matrix.assetsBundlesName }}
+          path: TrashCat/Assets/StreamingAssets/AssetBundles/
+
+      - name: Set PROXY_HOST
+        if: ${{ matrix.proxyHost == true }}
+        run: echo "PROXY_HOST=${{ secrets.PROXY_HOST }}" >> $GITHUB_ENV
+
+      - uses: actions/cache@v3.0.11
+        with:
+          path: TrashCat/Library
+          key: Library-${{ matrix.name }}
+          restore-keys: Library-${{ matrix.name }}
+
+      - uses: game-ci/unity-builder@v2
+        env:
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          projectPath: TrashCat/
+          targetPlatform: ${{ matrix.targetPlatform }}
+          buildMethod: ${{ matrix.buildMethod }}
+          allowDirtyBuild: ${{ matrix.allowDirtyBuild }}
+
+      - uses: actions/upload-artifact@v3.1.0
+        with:
+          name: ${{ matrix.name }}
+          path: TrashCat/Builds
